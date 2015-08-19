@@ -129,7 +129,7 @@ class LogStash::Inputs::Gelf < LogStash::Inputs::Base
               event = LogStash::Event.new(@jsonObj)
               event["source_host"] = @use_numeric_client_addr && client.addr(:numeric) || client.addr(:hostname)
               if event["timestamp"].is_a?(Numeric)
-                event["@timestamp"] = Time.at(event["timestamp"]).gmtime
+                event.timestamp = LogStash::Timestamp.at(event["timestamp"])
                 event.remove("timestamp")
               end
               remap_gelf(event) if @remap
