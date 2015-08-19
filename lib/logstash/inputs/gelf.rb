@@ -127,7 +127,7 @@ class LogStash::Inputs::Gelf < LogStash::Inputs::Base
 
             begin  # Create event
               event = LogStash::Event.new(@jsonObj)
-              event["source_host"] = @use_numeric_client_addr && client.addr(:numeric) || client.addr(:hostname)
+              event["source_host"] = client[3]
               if event["timestamp"].is_a?(Numeric)
                 event.timestamp = LogStash::Timestamp.at(event["timestamp"])
                 event.remove("timestamp")
