@@ -27,6 +27,10 @@ class LogStash::Inputs::Gelf < LogStash::Inputs::Base
   # The GELF protocol (TCP or UDP).
   config :protocol, :validate => :string, :default => "UDP"
 
+  # Whether to capture the hostname or numeric address of the incoming connection
+  # Defaults to hostname
+  config :use_numeric_client_addr, :validate => :boolean, :default => false
+
   # Whether or not to remap the GELF message fields to Logstash event fields or
   # leave them intact.
   #
@@ -127,7 +131,7 @@ class LogStash::Inputs::Gelf < LogStash::Inputs::Base
 
             begin  # Create event
               event = LogStash::Event.new(@jsonObj)
-              event["source_host"] = client[3]
+              event["source_host"] = @use_numeric_client_addr && client.addr(:numeric) || client.addr(:hostname)
               if event["timestamp"].is_a?(Numeric)
                 event.timestamp = LogStash::Timestamp.at(event["timestamp"])
                 event.remove("timestamp")
