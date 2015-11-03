@@ -1,9 +1,10 @@
 # encoding: utf-8
-require "date"
 require "logstash/inputs/base"
 require "logstash/namespace"
 require "logstash/json"
 require "logstash/timestamp"
+require "stud/interval"
+require "date"
 require "socket"
 
 # This input will read GELF messages as events over the network,
@@ -49,11 +50,12 @@ class LogStash::Inputs::Gelf < LogStash::Inputs::Base
   #
   config :strip_leading_underscore, :validate => :boolean, :default => true
 
+  RECONNECT_BACKOFF_SLEEP = 5
+
   public
   def initialize(params)
     super
     BasicSocket.do_not_reverse_lookup = true
-    @shutdown_requested = false
     @tcp = nil
     @udp = nil
   end # def initialize
@@ -72,26 +74,23 @@ class LogStash::Inputs::Gelf < LogStash::Inputs::Base
       else
         udp_listener(output_queue)
       end
-    rescue LogStash::ShutdownSignal
-      @shutdown_requested = true
     rescue => e
-      unless @shutdown_requested
+      unless stop?
         @logger.warn("gelf listener died", :exception => e, :backtrace => e.backtrace)
-        sleep(5)
-        retry
+        Stud.stoppable_sleep(RECONNECT_BACKOFF_SLEEP) { stop? }
+        retry unless stop?
       end
     end # begin
   end # def run
-
+  
   public
-  def teardown
-    @shutdown_requested = true
-    if @udp
-      @udp.close_read rescue nil
-      @udp.close_write rescue nil
-      @udp = nil
+  def stop
+    if @protocol.downcase == "tcp"
+      @tcp.close
+    else
+      @udp.close
     end
-    finished
+  rescue IOError # the plugin is currently shutting down, so its safe to ignore theses errors
   end
 
   private
@@ -102,7 +101,7 @@ class LogStash::Inputs::Gelf < LogStash::Inputs::Base
       @tcp = TCPServer.new(@host, @port)
     end
 
-    while !@shutdown_requested
+    while !stop?
       Thread.new(@tcp.accept) do |client|
         @logger.debug? && @logger.debug("Gelf (tcp): Accepting connection from:  #{client.peeraddr[2]}:#{client.peeraddr[1]}")
 
@@ -159,22 +158,17 @@ class LogStash::Inputs::Gelf < LogStash::Inputs::Base
           end
         end # begin client
       end  # Thread.new
-    end # @shutdown_requested
+    end # @!stop?
   end # def tcp_listener
 
   private
   def udp_listener(output_queue)
     @logger.info("Starting gelf listener (udp)", :address => "#{@host}:#{@port}")
 
-    if @udp
-      @udp.close_read rescue nil
-      @udp.close_write rescue nil
-    end
-
     @udp = UDPSocket.new(Socket::AF_INET)
     @udp.bind(@host, @port)
 
-    while !@shutdown_requested
+    while !stop?
       line, client = @udp.recvfrom(8192)
       begin
         data = Gelfd::Parser.parse(line)
