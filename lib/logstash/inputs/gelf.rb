@@ -11,7 +11,15 @@ require "socket"
 # making it a good choice if you already use Graylog2 today.
 #
 # The main use case for this input is to leverage existing GELF
-# logging libraries such as the GELF log4j appender.
+# logging libraries such as the GELF log4j appender. A library used
+# by this plugin has a bug which prevents it parsing uncompressed data.
+# If you use the log4j appender you need to configure it like this to force
+# gzip even for small messages:
+#
+#   <Socket name="logstash" protocol="udp" host="logstash.example.com" port="5001">
+#      <GelfLayout compressionType="GZIP" compressionThreshold="1" />
+#   </Socket>
+#
 #
 class LogStash::Inputs::Gelf < LogStash::Inputs::Base
   config_name "gelf"
@@ -197,13 +205,13 @@ class LogStash::Inputs::Gelf < LogStash::Inputs::Base
 
   private
   def remap_gelf(event)
-    if event["full_message"]
+    if event["full_message"] && !event["full_message"].empty?
       event["message"] = event["full_message"].dup
       event.remove("full_message")
       if event["short_message"] == event["message"]
         event.remove("short_message")
       end
-    elsif event["short_message"]
+    elsif event["short_message"]  && !event["short_message"].empty?
       event["message"] = event["short_message"].dup
       event.remove("short_message")
     end
