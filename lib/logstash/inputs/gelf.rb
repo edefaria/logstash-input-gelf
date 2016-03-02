@@ -90,7 +90,7 @@ class LogStash::Inputs::Gelf < LogStash::Inputs::Base
       end
     end # begin
   end # def run
-  
+
   public
   def stop
     if @protocol.downcase == "tcp"
